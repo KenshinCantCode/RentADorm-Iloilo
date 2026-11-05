@@ -1,16 +1,15 @@
 "use client";
 
+import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 const ADMIN_SESSION_KEY = "rentadorm-admin-session";
-const ADMIN_EMAIL = "admin@rentadormiloilo.com";
-const ADMIN_PASSWORD = "admin1234";
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState(ADMIN_EMAIL);
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isChecking, setIsChecking] = useState(true);
@@ -18,26 +17,56 @@ export default function AdminLoginPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const isAuthenticated = window.localStorage.getItem(ADMIN_SESSION_KEY) === "active";
-    if (isAuthenticated) {
-      router.replace("/admin");
-      return;
-    }
-
     if (window.location.pathname !== "/secret-admin") {
       router.replace("/secret-admin");
       return;
     }
 
-    setIsChecking(false);
+    const supabase = createClient();
+    void supabase.auth.getUser().then(({ data, error }) => {
+      if (error || !data.user) {
+        setIsChecking(false);
+        return;
+      }
+
+      window.localStorage.setItem(ADMIN_SESSION_KEY, "active");
+      router.replace("/admin");
+    });
   }, [router]);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
 
-    if (email.trim().toLowerCase() !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
-      setError("Invalid admin credentials. Please use the admin login details below.");
+    const nextEmail = email.trim();
+    const nextPassword = password.trim();
+
+    if (!nextEmail || !nextPassword) {
+      setError("Please enter both your email and password.");
+      return;
+    }
+
+    const supabase = createClient();
+
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      email: nextEmail,
+      password: nextPassword,
+    });
+
+    if (signInError || !data.user) {
+      setError(signInError?.message ?? "Unable to log in. Please check your credentials.");
+      return;
+    }
+
+    const { data: adminProfile, error: adminError } = await supabase
+      .from("admin_profiles")
+      .select("id")
+      .eq("email", nextEmail.toLowerCase())
+      .maybeSingle();
+
+    if (adminError || !adminProfile) {
+      await supabase.auth.signOut();
+      setError("This account is not authorized for the admin dashboard.");
       return;
     }
 
@@ -68,9 +97,8 @@ export default function AdminLoginPage() {
             </p>
 
             <div className="mt-8 rounded-2xl border border-slate-700 bg-slate-900 p-4 text-sm text-slate-200">
-              <p className="font-semibold text-white">Demo admin credentials</p>
-              <p className="mt-2">Email: {ADMIN_EMAIL}</p>
-              <p>Password: {ADMIN_PASSWORD}</p>
+              <p className="font-semibold text-white">Admin access</p>
+              <p className="mt-2">Use the admin email registered in Supabase Auth.</p>
             </div>
 
             <div className="mt-8">

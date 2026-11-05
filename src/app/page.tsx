@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 type Dorm = {
   id: string;
@@ -213,9 +214,35 @@ const dormDraftDefaults: DormDraft = {
 };
 
 const storage = {
-  dorms: "rentadorm-iloilo-dorms",
   session: "rentadorm-iloilo-session",
   favorites: "rentadorm-iloilo-favorites",
+};
+
+const normalizeDormFromRow = (row: Record<string, unknown>): Dorm => ({
+  id: String(row.id ?? ""),
+  name: String(row.name ?? "Dorm listing"),
+  area: String(row.area ?? "Jaro"),
+  price: String(row.price ?? "₱3,500/mo"),
+  rating: Number(row.rating ?? 4.8),
+  distance: String(row.distance ?? "Near city center"),
+  gender: String(row.gender ?? "Co-ed"),
+  beds: String(row.beds ?? "Single room"),
+  description: String(row.description ?? "A cozy Iloilo dorm listing."),
+  amenities: Array.isArray(row.amenities) ? (row.amenities as string[]) : ["Wi-Fi", "Security"],
+  ownerName: String(row.owner_name ?? row.ownerName ?? "Dorm owner"),
+  ownerPhone: String(row.owner_phone ?? row.ownerPhone ?? "+63 912 345 6789"),
+  ownerEmail: String(row.owner_email ?? row.ownerEmail ?? "owner@rentadormiloilo.com"),
+  image: String(row.image ?? defaultDorms[0].image),
+  gallery: Array.isArray(row.gallery) ? (row.gallery as string[]) : [String(row.image ?? defaultDorms[0].image)],
+  mapQuery: String(row.map_query ?? row.mapQuery ?? "Iloilo City"),
+});
+
+const getSupabaseClient = () => {
+  try {
+    return createClient();
+  } catch {
+    return null;
+  }
 };
 
 const areaOptions = [
@@ -246,21 +273,8 @@ export default function Home() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const savedDorms = window.localStorage.getItem(storage.dorms);
     const savedSession = window.localStorage.getItem(storage.session);
     const savedFavorites = window.localStorage.getItem(storage.favorites);
-
-    if (savedDorms) {
-      try {
-        const parsed = JSON.parse(savedDorms) as Dorm[];
-        if (parsed.length) {
-          setDorms(parsed);
-          setSelectedDormId(parsed[0].id);
-        }
-      } catch {
-        setDorms(defaultDorms);
-      }
-    }
 
     if (savedSession) {
       try {
@@ -279,13 +293,41 @@ export default function Home() {
         setFavorites([]);
       }
     }
-  }, []);
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(storage.dorms, JSON.stringify(dorms));
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      setDorms(defaultDorms);
+      setSelectedDormId(defaultDorms[0].id);
+      return;
     }
-  }, [dorms]);
+
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("dorms")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          setDorms(defaultDorms);
+          setSelectedDormId(defaultDorms[0].id);
+          return;
+        }
+
+        const rows = (data ?? []).map((row) => normalizeDormFromRow(row as Record<string, unknown>));
+        if (rows.length) {
+          setDorms(rows);
+          setSelectedDormId(rows[0].id);
+        } else {
+          setDorms(defaultDorms);
+          setSelectedDormId(defaultDorms[0].id);
+        }
+      } catch {
+        setDorms(defaultDorms);
+        setSelectedDormId(defaultDorms[0].id);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -447,7 +489,19 @@ export default function Home() {
     setEditingId(null);
   };
 
-  const handleDeleteDorm = (dormId: string) => {
+  const handleDeleteDorm = async (dormId: string) => {
+    const confirmed = typeof window !== "undefined" ? window.confirm("Delete this dorm listing?") : true;
+    if (!confirmed) return;
+
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      const { error } = await supabase.from("dorms").delete().eq("id", dormId);
+      if (error) {
+        console.error("Delete dorm failed:", error.message);
+        return;
+      }
+    }
+
     const nextDorms = dorms.filter((dorm) => dorm.id !== dormId);
     setDorms(nextDorms);
 

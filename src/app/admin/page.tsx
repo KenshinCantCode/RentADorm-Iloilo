@@ -1,6 +1,7 @@
 "use client";
 
 import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
+import { createClient } from "@/lib/supabase/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -49,6 +50,35 @@ const ADMIN_SESSION_KEY = "rentadorm-admin-session";
 const dormStorageKey = "rentadorm-iloilo-dorms";
 const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
 const iloiloCenter = { lat: 10.7202, lng: 122.5621 };
+
+const normalizeDormFromRow = (row: Record<string, unknown>): Dorm => ({
+  id: String(row.id ?? ""),
+  name: String(row.name ?? "Dorm listing"),
+  area: String(row.area ?? "Jaro"),
+  price: String(row.price ?? "₱3,500/mo"),
+  rating: Number(row.rating ?? 4.8),
+  distance: String(row.distance ?? "Near city center"),
+  gender: String(row.gender ?? "Co-ed"),
+  beds: String(row.beds ?? "Single room"),
+  description: String(row.description ?? "A cozy Iloilo dorm listing."),
+  amenities: Array.isArray(row.amenities) ? (row.amenities as string[]) : ["Wi-Fi", "Security"],
+  ownerName: String(row.owner_name ?? row.ownerName ?? "Dorm owner"),
+  ownerPhone: String(row.owner_phone ?? row.ownerPhone ?? "+63 912 345 6789"),
+  ownerEmail: String(row.owner_email ?? row.ownerEmail ?? "owner@rentadormiloilo.com"),
+  image: String(row.image ?? defaultDorms[0].image),
+  gallery: Array.isArray(row.gallery) ? (row.gallery as string[]) : [String(row.image ?? defaultDorms[0].image)],
+  mapQuery: String(row.map_query ?? row.mapQuery ?? "Iloilo City"),
+  latitude: typeof row.latitude === "number" ? row.latitude : undefined,
+  longitude: typeof row.longitude === "number" ? row.longitude : undefined,
+});
+
+const getSupabaseClient = () => {
+  try {
+    return createClient();
+  } catch {
+    return null;
+  }
+};
 
 const defaultDorms: Dorm[] = [
   {
@@ -217,25 +247,82 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const isAuthenticated = window.localStorage.getItem(ADMIN_SESSION_KEY) === "active";
-    if (!isAuthenticated) {
-      router.replace("/admin/login");
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      const savedDorms = window.localStorage.getItem(dormStorageKey);
+      if (savedDorms) {
+        try {
+          const parsed = JSON.parse(savedDorms) as Dorm[];
+          if (parsed.length) {
+            setDorms(parsed);
+          }
+        } catch {
+          setDorms(defaultDorms);
+        }
+      }
+      setIsReady(true);
       return;
     }
 
-    const savedDorms = window.localStorage.getItem(dormStorageKey);
-    if (savedDorms) {
+    void (async () => {
       try {
-        const parsed = JSON.parse(savedDorms) as Dorm[];
-        if (parsed.length) {
-          setDorms(parsed);
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+
+        if (userError || !user) {
+          window.localStorage.removeItem(ADMIN_SESSION_KEY);
+          router.replace("/secret-admin");
+          return;
         }
+
+        const { data: adminProfile, error: adminProfileError } = await supabase
+          .from("admin_profiles")
+          .select("id")
+          .eq("email", user.email?.toLowerCase())
+          .maybeSingle();
+
+        if (adminProfileError || !adminProfile) {
+          await supabase.auth.signOut();
+          window.localStorage.removeItem(ADMIN_SESSION_KEY);
+          router.replace("/secret-admin");
+          return;
+        }
+
+        window.localStorage.setItem(ADMIN_SESSION_KEY, "active");
+
+        const { data, error } = await supabase
+          .from("dorms")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          console.error("Failed to load dorms from Supabase:", error.message);
+          const savedDorms = window.localStorage.getItem(dormStorageKey);
+          if (savedDorms) {
+            try {
+              const parsed = JSON.parse(savedDorms) as Dorm[];
+              if (parsed.length) {
+                setDorms(parsed);
+              }
+            } catch {
+              setDorms(defaultDorms);
+            }
+          } else {
+            setDorms(defaultDorms);
+          }
+          return;
+        }
+
+        const rows = (data ?? []).map((row) => normalizeDormFromRow(row as Record<string, unknown>));
+        setDorms(rows.length ? rows : defaultDorms);
       } catch {
         setDorms(defaultDorms);
+      } finally {
+        setIsReady(true);
       }
-    }
-
-    setIsReady(true);
+    })();
   }, [router]);
 
   useEffect(() => {
@@ -372,7 +459,7 @@ export default function AdminDashboardPage() {
     setIsCrudOpen(true);
   };
 
-  const handleSaveDorm = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSaveDorm = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const cleanAmenities = draft.amenities
@@ -406,12 +493,53 @@ export default function AdminDashboardPage() {
       longitude: draft.longitude ?? iloiloCenter.lng,
     };
 
-    setDorms((current) => {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      const payload = {
+        id: nextDorm.id,
+        name: nextDorm.name,
+        area: nextDorm.area,
+        price: nextDorm.price,
+        rating: nextDorm.rating,
+        distance: nextDorm.distance,
+        gender: nextDorm.gender,
+        beds: nextDorm.beds,
+        description: nextDorm.description,
+        amenities: nextDorm.amenities,
+        owner_name: nextDorm.ownerName,
+        owner_phone: nextDorm.ownerPhone,
+        owner_email: nextDorm.ownerEmail,
+        image: nextDorm.image,
+        gallery: nextDorm.gallery,
+        map_query: nextDorm.mapQuery,
+        latitude: nextDorm.latitude,
+        longitude: nextDorm.longitude,
+      };
+
       if (editingId) {
-        return current.map((dorm) => (dorm.id === editingId ? nextDorm : dorm));
+        const { error } = await supabase.from("dorms").update(payload).eq("id", editingId);
+        if (error) {
+          console.error("Failed to update dorm:", error.message);
+          return;
+        }
+        setDorms((current) => current.map((dorm) => (dorm.id === editingId ? nextDorm : dorm)));
+      } else {
+        const { data, error } = await supabase.from("dorms").insert(payload).select();
+        if (error) {
+          console.error("Failed to create dorm:", error.message);
+          return;
+        }
+        const record = data?.[0] ? normalizeDormFromRow(data[0] as Record<string, unknown>) : nextDorm;
+        setDorms((current) => [record, ...current]);
       }
-      return [nextDorm, ...current];
-    });
+    } else {
+      setDorms((current) => {
+        if (editingId) {
+          return current.map((dorm) => (dorm.id === editingId ? nextDorm : dorm));
+        }
+        return [nextDorm, ...current];
+      });
+    }
 
     setIsCrudOpen(false);
     setEditState(null);
@@ -436,15 +564,31 @@ export default function AdminDashboardPage() {
     setDraft((current) => applyLocationDetails(trimmed, current));
   };
 
-  const handleDeleteDorm = (dormId: string) => {
+  const handleDeleteDorm = async (dormId: string) => {
+    const confirmed = typeof window !== "undefined" ? window.confirm("Delete this dorm listing?") : true;
+    if (!confirmed) return;
+
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      const { error } = await supabase.from("dorms").delete().eq("id", dormId);
+      if (error) {
+        console.error("Delete dorm failed:", error.message);
+        return;
+      }
+    }
+
     setDorms((current) => current.filter((dorm) => dorm.id !== dormId));
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(ADMIN_SESSION_KEY);
     }
-    router.push("/admin/login");
+    router.push("/secret-admin");
   };
 
   const setEditState = (value: string | null) => {
