@@ -52,7 +52,7 @@ type UserSession = {
 
 const defaultDorms: Dorm[] = [
   {
-    id: "greenfield",
+    id: "7d8a3d40-0fb7-4d65-8d4f-0b1d237c5f11",
     name: "Greenfield Student Homes",
     area: "Jaro",
     price: "₱3,800/mo",
@@ -78,7 +78,7 @@ const defaultDorms: Dorm[] = [
     mapQuery: "Greenfield Student Homes, Jaro, Iloilo City",
   },
   {
-    id: "avenue",
+    id: "b5f7ec80-70b8-4c6c-bd7a-041f69f5b7a1",
     name: "Avenue Nest Dorm",
     area: "Molo",
     price: "₱4,200/mo",
@@ -104,7 +104,7 @@ const defaultDorms: Dorm[] = [
     mapQuery: "Avenue Nest Dorm, Molo, Iloilo City",
   },
   {
-    id: "casa",
+    id: "edb4a7b3-9be1-4b2b-90df-72bca22d9ac5",
     name: "Casa de Flores",
     area: "City Proper",
     price: "₱3,500/mo",
@@ -130,7 +130,7 @@ const defaultDorms: Dorm[] = [
     mapQuery: "Casa de Flores, City Proper, Iloilo City",
   },
   {
-    id: "brio",
+    id: "1c22d570-e7c7-4a2b-ae73-af54d7d7789c",
     name: "Brio Residences",
     area: "Mandurriao",
     price: "₱5,000/mo",
@@ -156,7 +156,7 @@ const defaultDorms: Dorm[] = [
     mapQuery: "Brio Residences, Mandurriao, Iloilo City",
   },
   {
-    id: "bluehouse",
+    id: "d003e22d-b634-4859-8c35-4b4c4db41085",
     name: "The Blue House",
     area: "La Paz",
     price: "₱3,900/mo",
@@ -182,7 +182,7 @@ const defaultDorms: Dorm[] = [
     mapQuery: "The Blue House, La Paz, Iloilo City",
   },
   {
-    id: "euphoria",
+    id: "26a1b68e-c10f-4a5f-a653-4bf7a11b0f74",
     name: "Euphoria Rooms",
     area: "Molo",
     price: "₱4,600/mo",
@@ -289,6 +289,14 @@ const createDormId = () => {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
 
+const isValidUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+const normalizeDormIdList = (items: Dorm[]) =>
+  items.map((dorm) => ({
+    ...dorm,
+    id: isValidUuid(dorm.id) ? dorm.id : createDormId(),
+  }));
+
 const areaOptions = [
   "All",
   "Jaro",
@@ -299,10 +307,10 @@ const areaOptions = [
 ];
 
 export default function Home() {
-  const [dorms, setDorms] = useState<Dorm[]>(defaultDorms);
+  const [dorms, setDorms] = useState<Dorm[]>(normalizeDormIdList(defaultDorms));
   const [selectedArea, setSelectedArea] = useState("All");
   const [selectedStatus, setSelectedStatus] = useState("All");
-  const [selectedDormId, setSelectedDormId] = useState(defaultDorms[0].id);
+  const [selectedDormId, setSelectedDormId] = useState(normalizeDormIdList(defaultDorms)[0].id);
   const [searchQuery, setSearchQuery] = useState("");
   const [favorites, setFavorites] = useState<string[]>([]);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -341,8 +349,9 @@ export default function Home() {
 
     const supabase = getSupabaseClient();
     if (!supabase) {
-      setDorms(defaultDorms);
-      setSelectedDormId(defaultDorms[0].id);
+      const seededDorms = normalizeDormIdList(defaultDorms);
+      setDorms(seededDorms);
+      setSelectedDormId(seededDorms[0].id);
       return;
     }
 
@@ -354,22 +363,25 @@ export default function Home() {
           .order("created_at", { ascending: false });
 
         if (error) {
-          setDorms(defaultDorms);
-          setSelectedDormId(defaultDorms[0].id);
+          const seededDorms = normalizeDormIdList(defaultDorms);
+          setDorms(seededDorms);
+          setSelectedDormId(seededDorms[0].id);
           return;
         }
 
-        const rows = (data ?? []).map((row) => normalizeDormFromRow(row as Record<string, unknown>));
+        const rows = normalizeDormIdList((data ?? []).map((row) => normalizeDormFromRow(row as Record<string, unknown>)));
         if (rows.length) {
           setDorms(rows);
           setSelectedDormId(rows[0].id);
         } else {
-          setDorms(defaultDorms);
-          setSelectedDormId(defaultDorms[0].id);
+          const seededDorms = normalizeDormIdList(defaultDorms);
+          setDorms(seededDorms);
+          setSelectedDormId(seededDorms[0].id);
         }
       } catch {
-        setDorms(defaultDorms);
-        setSelectedDormId(defaultDorms[0].id);
+        const seededDorms = normalizeDormIdList(defaultDorms);
+        setDorms(seededDorms);
+        setSelectedDormId(seededDorms[0].id);
       }
     })();
   }, []);
@@ -390,8 +402,9 @@ export default function Home() {
       try {
         const parsed = JSON.parse(savedDorms) as Dorm[];
         if (Array.isArray(parsed) && parsed.length) {
-          setDorms(parsed);
-          setSelectedDormId((current) => (parsed.some((dorm) => dorm.id === current) ? current : parsed[0].id));
+          const normalized = normalizeDormIdList(parsed);
+          setDorms(normalized);
+          setSelectedDormId((current) => (normalized.some((dorm) => dorm.id === current) ? current : normalized[0].id));
         }
       } catch {
         // Ignore invalid cached dorm data and allow the live Supabase data to populate.
@@ -585,7 +598,7 @@ export default function Home() {
     setDorms(nextDorms);
 
     if (selectedDormId === dormId) {
-      setSelectedDormId(nextDorms[0]?.id ?? defaultDorms[0].id);
+      setSelectedDormId(nextDorms[0]?.id ?? normalizeDormIdList(defaultDorms)[0].id);
     }
 
     setFavorites((current) => current.filter((item) => item !== dormId));

@@ -109,9 +109,17 @@ const createDormId = () => {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
 
+const isValidUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+const normalizeDormIdList = (items: Dorm[]) =>
+  items.map((dorm) => ({
+    ...dorm,
+    id: isValidUuid(dorm.id) ? dorm.id : createDormId(),
+  }));
+
 const defaultDorms: Dorm[] = [
   {
-    id: "greenfield",
+    id: "7d8a3d40-0fb7-4d65-8d4f-0b1d237c5f11",
     name: "Greenfield Student Homes",
     area: "Jaro",
     price: "₱3,800/mo",
@@ -137,7 +145,7 @@ const defaultDorms: Dorm[] = [
     mapQuery: "Greenfield Student Homes, Jaro, Iloilo City",
   },
   {
-    id: "avenue",
+    id: "b5f7ec80-70b8-4c6c-bd7a-041f69f5b7a1",
     name: "Avenue Nest Dorm",
     area: "Molo",
     price: "₱4,200/mo",
@@ -163,7 +171,7 @@ const defaultDorms: Dorm[] = [
     mapQuery: "Avenue Nest Dorm, Molo, Iloilo City",
   },
   {
-    id: "brio",
+    id: "1c22d570-e7c7-4a2b-ae73-af54d7d7789c",
     name: "Brio Residences",
     area: "Mandurriao",
     price: "₱5,000/mo",
@@ -270,7 +278,7 @@ const applyLocationDetails = (value: string, currentDraft: DormDraft) => {
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const [dorms, setDorms] = useState<Dorm[]>(defaultDorms);
+  const [dorms, setDorms] = useState<Dorm[]>(normalizeDormIdList(defaultDorms));
   const [searchQuery, setSearchQuery] = useState("");
   const [draft, setDraft] = useState<DormDraft>(draftDefaults);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -291,10 +299,10 @@ export default function AdminDashboardPage() {
         try {
           const parsed = JSON.parse(savedDorms) as Dorm[];
           if (parsed.length) {
-            setDorms(parsed);
+            setDorms(normalizeDormIdList(parsed));
           }
         } catch {
-          setDorms(defaultDorms);
+          setDorms(normalizeDormIdList(defaultDorms));
         }
       }
       setIsReady(true);
@@ -341,21 +349,21 @@ export default function AdminDashboardPage() {
             try {
               const parsed = JSON.parse(savedDorms) as Dorm[];
               if (parsed.length) {
-                setDorms(parsed);
+                setDorms(normalizeDormIdList(parsed));
               }
             } catch {
-              setDorms(defaultDorms);
+              setDorms(normalizeDormIdList(defaultDorms));
             }
           } else {
-            setDorms(defaultDorms);
+            setDorms(normalizeDormIdList(defaultDorms));
           }
           return;
         }
 
-        const rows = (data ?? []).map((row) => normalizeDormFromRow(row as Record<string, unknown>));
-        setDorms(rows.length ? rows : defaultDorms);
+        const rows = normalizeDormIdList((data ?? []).map((row) => normalizeDormFromRow(row as Record<string, unknown>)));
+        setDorms(rows.length ? rows : normalizeDormIdList(defaultDorms));
       } catch {
-        setDorms(defaultDorms);
+        setDorms(normalizeDormIdList(defaultDorms));
       } finally {
         setIsReady(true);
       }
