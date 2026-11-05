@@ -18,6 +18,8 @@ type Dorm = {
   ownerName: string;
   ownerPhone: string;
   ownerEmail: string;
+  ownerFacebook: string;
+  status: "Available" | "Reserved" | "Unavailable";
   image: string;
   gallery: string[];
   mapQuery: string;
@@ -36,6 +38,8 @@ type DormDraft = {
   ownerName: string;
   ownerPhone: string;
   ownerEmail: string;
+  ownerFacebook: string;
+  status: "Available" | "Reserved" | "Unavailable";
   image: string;
   gallery: string;
   mapQuery: string;
@@ -62,6 +66,8 @@ const defaultDorms: Dorm[] = [
     ownerName: "Maria Santos",
     ownerPhone: "+63 917 123 4567",
     ownerEmail: "maria@greenfielddorm.com",
+    ownerFacebook: "https://facebook.com/greenfieldstudenthomes",
+    status: "Available",
     image:
       "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1200&q=80",
     gallery: [
@@ -86,6 +92,8 @@ const defaultDorms: Dorm[] = [
     ownerName: "Rhea Dela Cruz",
     ownerPhone: "+63 998 765 4321",
     ownerEmail: "rhea@avenuenestdorm.com",
+    ownerFacebook: "https://facebook.com/avenuenestdorm",
+    status: "Reserved",
     image:
       "https://images.unsplash.com/photo-1484154218962-a197022b5858?auto=format&fit=crop&w=1200&q=80",
     gallery: [
@@ -110,6 +118,8 @@ const defaultDorms: Dorm[] = [
     ownerName: "Nina Fernandez",
     ownerPhone: "+63 925 345 7788",
     ownerEmail: "nina@casadeflores.ph",
+    ownerFacebook: "https://facebook.com/casadefloresiloilo",
+    status: "Available",
     image:
       "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1200&q=80",
     gallery: [
@@ -134,6 +144,8 @@ const defaultDorms: Dorm[] = [
     ownerName: "Earl Ramos",
     ownerPhone: "+63 915 431 9090",
     ownerEmail: "earl@brioresidences.ph",
+    ownerFacebook: "https://facebook.com/brioresidencesiloilo",
+    status: "Available",
     image:
       "https://images.unsplash.com/photo-1494526585095-c41746248156?auto=format&fit=crop&w=1200&q=80",
     gallery: [
@@ -158,6 +170,8 @@ const defaultDorms: Dorm[] = [
     ownerName: "Liza Villanueva",
     ownerPhone: "+63 932 443 9981",
     ownerEmail: "liza@thebluehouse.ph",
+    ownerFacebook: "https://facebook.com/thebluehouseiloilo",
+    status: "Unavailable",
     image:
       "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=1200&q=80",
     gallery: [
@@ -182,6 +196,8 @@ const defaultDorms: Dorm[] = [
     ownerName: "Cris Romero",
     ownerPhone: "+63 909 122 3344",
     ownerEmail: "cris@euphoriarooms.com",
+    ownerFacebook: "https://facebook.com/euphoriaroomsiloilo",
+    status: "Available",
     image:
       "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=1200&q=80",
     gallery: [
@@ -206,6 +222,8 @@ const dormDraftDefaults: DormDraft = {
   ownerName: "",
   ownerPhone: "",
   ownerEmail: "",
+  ownerFacebook: "",
+  status: "Available",
   image:
     "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1200&q=80",
   gallery:
@@ -232,6 +250,8 @@ const normalizeDormFromRow = (row: Record<string, unknown>): Dorm => ({
   ownerName: String(row.owner_name ?? row.ownerName ?? "Dorm owner"),
   ownerPhone: String(row.owner_phone ?? row.ownerPhone ?? "+63 912 345 6789"),
   ownerEmail: String(row.owner_email ?? row.ownerEmail ?? "owner@rentadormiloilo.com"),
+  ownerFacebook: String(row.owner_facebook ?? row.ownerFacebook ?? "https://facebook.com/rentadormiloilo"),
+  status: (row.status as Dorm["status"]) ?? "Available",
   image: String(row.image ?? defaultDorms[0].image),
   gallery: Array.isArray(row.gallery) ? (row.gallery as string[]) : [String(row.image ?? defaultDorms[0].image)],
   mapQuery: String(row.map_query ?? row.mapQuery ?? "Iloilo City"),
@@ -243,6 +263,29 @@ const getSupabaseClient = () => {
   } catch {
     return null;
   }
+};
+
+const createDormId = () => {
+  const browserCrypto = globalThis.crypto;
+
+  if (browserCrypto && typeof browserCrypto.randomUUID === "function") {
+    return browserCrypto.randomUUID();
+  }
+
+  const bytes = new Uint8Array(16);
+  if (browserCrypto && typeof browserCrypto.getRandomValues === "function") {
+    browserCrypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
 
 const areaOptions = [
@@ -257,6 +300,7 @@ const areaOptions = [
 export default function Home() {
   const [dorms, setDorms] = useState<Dorm[]>(defaultDorms);
   const [selectedArea, setSelectedArea] = useState("All");
+  const [selectedStatus, setSelectedStatus] = useState("All");
   const [selectedDormId, setSelectedDormId] = useState(defaultDorms[0].id);
   const [searchQuery, setSearchQuery] = useState("");
   const [favorites, setFavorites] = useState<string[]>([]);
@@ -341,15 +385,16 @@ export default function Home() {
     const normalized = searchQuery.trim().toLowerCase();
     return dorms.filter((dorm) => {
       const matchesArea = selectedArea === "All" || dorm.area === selectedArea;
+      const matchesStatus = selectedStatus === "All" || dorm.status === selectedStatus;
       const matchesSearch =
         normalized.length === 0 ||
         dorm.name.toLowerCase().includes(normalized) ||
         dorm.area.toLowerCase().includes(normalized) ||
         dorm.description.toLowerCase().includes(normalized);
 
-      return matchesArea && matchesSearch;
+      return matchesArea && matchesSearch && matchesStatus;
     });
-  }, [dorms, searchQuery, selectedArea]);
+  }, [dorms, searchQuery, selectedArea, selectedStatus]);
 
   useEffect(() => {
     if (!filteredDorms.some((dorm) => dorm.id === selectedDormId) && filteredDorms[0]) {
@@ -386,6 +431,8 @@ export default function Home() {
       ownerName: dorm.ownerName,
       ownerPhone: dorm.ownerPhone,
       ownerEmail: dorm.ownerEmail,
+      ownerFacebook: dorm.ownerFacebook,
+      status: dorm.status,
       image: dorm.image,
       gallery: dorm.gallery.join(", "),
       mapQuery: dorm.mapQuery,
@@ -459,7 +506,7 @@ export default function Home() {
       .filter(Boolean);
 
     const nextDorm: Dorm = {
-      id: editingId ?? Date.now().toString(),
+      id: editingId ?? createDormId(),
       name: draft.name.trim(),
       area: draft.area,
       price: draft.price.trim(),
@@ -472,6 +519,8 @@ export default function Home() {
       ownerName: draft.ownerName.trim() || "Dorm owner",
       ownerPhone: draft.ownerPhone.trim() || "+63 912 345 6789",
       ownerEmail: draft.ownerEmail.trim() || "owner@rentadormiloilo.com",
+      ownerFacebook: draft.ownerFacebook.trim() || "https://facebook.com/rentadormiloilo",
+      status: draft.status,
       image: draft.image.trim() || defaultDorms[0].image,
       gallery: cleanGallery.length ? cleanGallery : [draft.image.trim() || defaultDorms[0].image],
       mapQuery: draft.mapQuery.trim() || `${draft.name.trim() || "Dorm"}, ${draft.area}, Iloilo City`,
@@ -760,6 +809,19 @@ export default function Home() {
               </div>
 
               <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Status</label>
+                <select
+                  value={draft.status}
+                  onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value as DormDraft["status"] }))}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                >
+                  <option value="Available">Available</option>
+                  <option value="Reserved">Reserved</option>
+                  <option value="Unavailable">Unavailable</option>
+                </select>
+              </div>
+
+              <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Owner phone</label>
                 <input
                   value={draft.ownerPhone}
@@ -768,13 +830,23 @@ export default function Home() {
                 />
               </div>
 
-              <div className="md:col-span-2">
+              <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Owner email</label>
                 <input
                   type="email"
                   value={draft.ownerEmail}
                   onChange={(event) => setDraft((current) => ({ ...current, ownerEmail: event.target.value }))}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Facebook profile/page URL</label>
+                <input
+                  value={draft.ownerFacebook}
+                  onChange={(event) => setDraft((current) => ({ ...current, ownerFacebook: event.target.value }))}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                  placeholder="https://facebook.com/yourpage"
                 />
               </div>
 
@@ -856,6 +928,23 @@ export default function Home() {
               }`}
             >
               {area}
+            </button>
+          ))}
+        </div>
+
+        <div className="mb-5 flex flex-wrap gap-2">
+          {(["All", "Available", "Reserved", "Unavailable"] as const).map((status) => (
+            <button
+              key={status}
+              type="button"
+              onClick={() => setSelectedStatus(status)}
+              className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                selectedStatus === status
+                  ? "border-amber-500 bg-amber-500 text-slate-900"
+                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+              }`}
+            >
+              {status}
             </button>
           ))}
         </div>
@@ -968,7 +1057,18 @@ export default function Home() {
               </div>
 
               <div className="mt-5 rounded-[1.5rem] border border-slate-200 bg-white p-4">
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Owner contact</p>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Owner contact</p>
+                  <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${
+                    selectedDorm.status === "Available"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : selectedDorm.status === "Reserved"
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-slate-200 text-slate-600"
+                  }`}>
+                    {selectedDorm.status}
+                  </span>
+                </div>
                 <div className="mt-3 space-y-3 text-sm text-slate-700">
                   <div>
                     <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Name</span>
@@ -984,6 +1084,12 @@ export default function Home() {
                     <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Email</span>
                     <a href={`mailto:${selectedDorm.ownerEmail}`} className="mt-1 block font-semibold text-slate-900 hover:text-amber-700">
                       {selectedDorm.ownerEmail}
+                    </a>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Facebook</span>
+                    <a href={selectedDorm.ownerFacebook} target="_blank" rel="noreferrer" className="mt-1 block font-semibold text-slate-900 hover:text-amber-700">
+                      Visit Facebook page
                     </a>
                   </div>
                 </div>
@@ -1052,6 +1158,22 @@ export default function Home() {
               </p>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="mx-auto w-full max-w-7xl px-4 pb-8 sm:px-6 lg:px-8">
+        <div className="grid gap-6 md:grid-cols-3">
+          {[
+            { title: "Search by district", description: "Filter by Jaro, Molo, Mandurriao, and more so students can find the right area in seconds." },
+            { title: "See the exact room", description: "View photos, amenities, rent, location, and owner details before reaching out." },
+            { title: "Flexible listings", description: "Track which rooms are available, reserved, or temporarily unavailable for better planning." },
+          ].map((item) => (
+            <div key={item.title} className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-700">Step</p>
+              <h4 className="mt-2 text-xl font-black text-slate-900">{item.title}</h4>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
+            </div>
+          ))}
         </div>
       </section>
     </main>

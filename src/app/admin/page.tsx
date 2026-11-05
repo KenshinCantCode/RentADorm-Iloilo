@@ -19,6 +19,8 @@ type Dorm = {
   ownerName: string;
   ownerPhone: string;
   ownerEmail: string;
+  ownerFacebook: string;
+  status: "Available" | "Reserved" | "Unavailable";
   image: string;
   gallery: string[];
   mapQuery: string;
@@ -39,6 +41,8 @@ type DormDraft = {
   ownerName: string;
   ownerPhone: string;
   ownerEmail: string;
+  ownerFacebook: string;
+  status: "Available" | "Reserved" | "Unavailable";
   image: string;
   gallery: string;
   mapQuery: string;
@@ -65,6 +69,8 @@ const normalizeDormFromRow = (row: Record<string, unknown>): Dorm => ({
   ownerName: String(row.owner_name ?? row.ownerName ?? "Dorm owner"),
   ownerPhone: String(row.owner_phone ?? row.ownerPhone ?? "+63 912 345 6789"),
   ownerEmail: String(row.owner_email ?? row.ownerEmail ?? "owner@rentadormiloilo.com"),
+  ownerFacebook: String(row.owner_facebook ?? row.ownerFacebook ?? "https://facebook.com/rentadormiloilo"),
+  status: (row.status as Dorm["status"]) ?? "Available",
   image: String(row.image ?? defaultDorms[0].image),
   gallery: Array.isArray(row.gallery) ? (row.gallery as string[]) : [String(row.image ?? defaultDorms[0].image)],
   mapQuery: String(row.map_query ?? row.mapQuery ?? "Iloilo City"),
@@ -78,6 +84,29 @@ const getSupabaseClient = () => {
   } catch {
     return null;
   }
+};
+
+const createDormId = () => {
+  const browserCrypto = globalThis.crypto;
+
+  if (browserCrypto && typeof browserCrypto.randomUUID === "function") {
+    return browserCrypto.randomUUID();
+  }
+
+  const bytes = new Uint8Array(16);
+  if (browserCrypto && typeof browserCrypto.getRandomValues === "function") {
+    browserCrypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
 
 const defaultDorms: Dorm[] = [
@@ -96,6 +125,8 @@ const defaultDorms: Dorm[] = [
     ownerName: "Maria Santos",
     ownerPhone: "+63 917 123 4567",
     ownerEmail: "maria@greenfielddorm.com",
+    ownerFacebook: "https://facebook.com/greenfieldstudenthomes",
+    status: "Available",
     image:
       "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1200&q=80",
     gallery: [
@@ -120,6 +151,8 @@ const defaultDorms: Dorm[] = [
     ownerName: "Rhea Dela Cruz",
     ownerPhone: "+63 998 765 4321",
     ownerEmail: "rhea@avenuenestdorm.com",
+    ownerFacebook: "https://facebook.com/avenuenestdorm",
+    status: "Reserved",
     image:
       "https://images.unsplash.com/photo-1484154218962-a197022b5858?auto=format&fit=crop&w=1200&q=80",
     gallery: [
@@ -144,6 +177,8 @@ const defaultDorms: Dorm[] = [
     ownerName: "Earl Ramos",
     ownerPhone: "+63 915 431 9090",
     ownerEmail: "earl@brioresidences.ph",
+    ownerFacebook: "https://facebook.com/brioresidencesiloilo",
+    status: "Available",
     image:
       "https://images.unsplash.com/photo-1494526585095-c41746248156?auto=format&fit=crop&w=1200&q=80",
     gallery: [
@@ -168,6 +203,8 @@ const draftDefaults: DormDraft = {
   ownerName: "",
   ownerPhone: "",
   ownerEmail: "",
+  ownerFacebook: "",
+  status: "Available",
   image: "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1200&q=80",
   gallery: "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1200&q=80, https://images.unsplash.com/photo-1494526585095-c41746248156?auto=format&fit=crop&w=900&q=80",
   mapQuery: "",
@@ -450,6 +487,8 @@ export default function AdminDashboardPage() {
       ownerName: dorm.ownerName,
       ownerPhone: dorm.ownerPhone,
       ownerEmail: dorm.ownerEmail,
+      ownerFacebook: dorm.ownerFacebook,
+      status: dorm.status,
       image: dorm.image,
       gallery: dorm.gallery.join(", "),
       mapQuery: dorm.mapQuery,
@@ -473,7 +512,7 @@ export default function AdminDashboardPage() {
       .filter(Boolean);
 
     const nextDorm: Dorm = {
-      id: editingId ?? Date.now().toString(),
+      id: editingId ?? createDormId(),
       name: draft.name.trim(),
       area: draft.area,
       price: draft.price.trim(),
@@ -486,6 +525,8 @@ export default function AdminDashboardPage() {
       ownerName: draft.ownerName.trim() || "Dorm owner",
       ownerPhone: draft.ownerPhone.trim() || "+63 912 345 6789",
       ownerEmail: draft.ownerEmail.trim() || "owner@rentadormiloilo.com",
+      ownerFacebook: draft.ownerFacebook.trim() || "https://facebook.com/rentadormiloilo",
+      status: draft.status,
       image: draft.image.trim() || defaultDorms[0].image,
       gallery: cleanGallery.length ? cleanGallery : [draft.image.trim() || defaultDorms[0].image],
       mapQuery: draft.mapQuery.trim() || `${draft.name.trim() || "Dorm"}, ${draft.area}, Iloilo City`,
@@ -509,6 +550,8 @@ export default function AdminDashboardPage() {
         owner_name: nextDorm.ownerName,
         owner_phone: nextDorm.ownerPhone,
         owner_email: nextDorm.ownerEmail,
+        owner_facebook: nextDorm.ownerFacebook,
+        status: nextDorm.status,
         image: nextDorm.image,
         gallery: nextDorm.gallery,
         map_query: nextDorm.mapQuery,
@@ -838,6 +881,19 @@ export default function AdminDashboardPage() {
               </div>
 
               <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Status</label>
+                <select
+                  value={draft.status}
+                  onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value as DormDraft["status"] }))}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-400"
+                >
+                  <option value="Available">Available</option>
+                  <option value="Reserved">Reserved</option>
+                  <option value="Unavailable">Unavailable</option>
+                </select>
+              </div>
+
+              <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Owner phone</label>
                 <input
                   value={draft.ownerPhone}
@@ -846,13 +902,23 @@ export default function AdminDashboardPage() {
                 />
               </div>
 
-              <div className="md:col-span-2">
+              <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Owner email</label>
                 <input
                   type="email"
                   value={draft.ownerEmail}
                   onChange={(event) => setDraft((current) => ({ ...current, ownerEmail: event.target.value }))}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-400"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Facebook profile/page URL</label>
+                <input
+                  value={draft.ownerFacebook}
+                  onChange={(event) => setDraft((current) => ({ ...current, ownerFacebook: event.target.value }))}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-400"
+                  placeholder="https://facebook.com/yourpage"
                 />
               </div>
 

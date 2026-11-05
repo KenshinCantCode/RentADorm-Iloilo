@@ -13,6 +13,8 @@ create table if not exists public.dorms (
   owner_name text,
   owner_phone text,
   owner_email text,
+  owner_facebook text,
+  status text not null default 'Available' check (status in ('Available', 'Reserved', 'Unavailable')),
   image text,
   gallery text[] not null default array[]::text[],
   map_query text,
