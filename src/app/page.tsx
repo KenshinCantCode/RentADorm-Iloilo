@@ -237,6 +237,12 @@ const storage = {
   dorms: "rentadorm-iloilo-dorms",
 };
 
+const clearDormCache = () => {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(storage.dorms);
+  }
+};
+
 const normalizeDormFromRow = (row: Record<string, unknown>): Dorm => ({
   id: String(row.id ?? ""),
   name: String(row.name ?? "Dorm listing"),
@@ -363,9 +369,9 @@ export default function Home() {
           .order("created_at", { ascending: false });
 
         if (error) {
-          const seededDorms = normalizeDormIdList(defaultDorms);
-          setDorms(seededDorms);
-          setSelectedDormId(seededDorms[0].id);
+          console.error("Failed to load dorms from Supabase:", error.message);
+          setDorms([]);
+          setSelectedDormId("");
           return;
         }
 
@@ -374,14 +380,13 @@ export default function Home() {
           setDorms(rows);
           setSelectedDormId(rows[0].id);
         } else {
-          const seededDorms = normalizeDormIdList(defaultDorms);
-          setDorms(seededDorms);
-          setSelectedDormId(seededDorms[0].id);
+          setDorms([]);
+          setSelectedDormId("");
         }
-      } catch {
-        const seededDorms = normalizeDormIdList(defaultDorms);
-        setDorms(seededDorms);
-        setSelectedDormId(seededDorms[0].id);
+      } catch (error) {
+        console.error("Unexpected dorm load error:", error);
+        setDorms([]);
+        setSelectedDormId("");
       }
     })();
   }, []);
@@ -392,34 +397,34 @@ export default function Home() {
     }
   }, [favorites]);
 
-  const hasHydratedDormCacheRef = useRef(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      const savedDorms = window.localStorage.getItem(storage.dorms);
+      if (savedDorms) {
+        try {
+          const parsed = JSON.parse(savedDorms) as Dorm[];
+          if (Array.isArray(parsed) && parsed.length) {
+            const normalized = normalizeDormIdList(parsed);
+            setDorms(normalized);
+            setSelectedDormId((current) => (normalized.some((dorm) => dorm.id === current) ? current : normalized[0].id));
+          }
+        } catch {
+          // Ignore invalid cached dorm data when the app is not connected to Supabase.
+        }
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const savedDorms = window.localStorage.getItem(storage.dorms);
-    if (savedDorms) {
-      try {
-        const parsed = JSON.parse(savedDorms) as Dorm[];
-        if (Array.isArray(parsed) && parsed.length) {
-          const normalized = normalizeDormIdList(parsed);
-          setDorms(normalized);
-          setSelectedDormId((current) => (normalized.some((dorm) => dorm.id === current) ? current : normalized[0].id));
-        }
-      } catch {
-        // Ignore invalid cached dorm data and allow the live Supabase data to populate.
-      }
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      window.localStorage.setItem(storage.dorms, JSON.stringify(dorms));
     }
-
-    hasHydratedDormCacheRef.current = true;
-  }, []);
-
-  useEffect(() => {
-    if (!hasHydratedDormCacheRef.current || typeof window === "undefined") {
-      return;
-    }
-
-    window.localStorage.setItem(storage.dorms, JSON.stringify(dorms));
   }, [dorms]);
 
   const areas = useMemo(() => ["All", ...new Set(dorms.map((dorm) => dorm.area))], [dorms]);
@@ -446,7 +451,10 @@ export default function Home() {
   }, [filteredDorms, selectedDormId]);
 
   const selectedDorm =
-    filteredDorms.find((dorm) => dorm.id === selectedDormId) ?? filteredDorms[0] ?? dorms[0];
+    filteredDorms.find((dorm) => dorm.id === selectedDormId) ?? filteredDorms[0] ?? dorms[0] ?? defaultDorms[0];
+
+  const hasListings = dorms.length > 0;
+  const hasFilteredListings = filteredDorms.length > 0;
 
   const totalRooms = dorms.length;
   const averageRate =
@@ -532,6 +540,7 @@ export default function Home() {
     setSession(null);
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(storage.session);
+      clearDormCache();
     }
   };
 
@@ -596,9 +605,10 @@ export default function Home() {
 
     const nextDorms = dorms.filter((dorm) => dorm.id !== dormId);
     setDorms(nextDorms);
+    clearDormCache();
 
     if (selectedDormId === dormId) {
-      setSelectedDormId(nextDorms[0]?.id ?? normalizeDormIdList(defaultDorms)[0].id);
+      setSelectedDormId(nextDorms[0]?.id ?? "");
     }
 
     setFavorites((current) => current.filter((item) => item !== dormId));
@@ -690,33 +700,42 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_35px_70px_rgba(15,23,42,0.12)]">
-          <img src={selectedDorm.image} alt={selectedDorm.name} className="h-[420px] w-full object-cover" />
-          <div className="p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500">Featured stay</p>
-                <h3 className="mt-2 text-2xl font-black text-slate-900">{selectedDorm.name}</h3>
+        {hasListings ? (
+          <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_35px_70px_rgba(15,23,42,0.12)]">
+            <img src={selectedDorm.image} alt={selectedDorm.name} className="h-[420px] w-full object-cover" />
+            <div className="p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500">Featured stay</p>
+                  <h3 className="mt-2 text-2xl font-black text-slate-900">{selectedDorm.name}</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => toggleFavorite(selectedDorm.id)}
+                  className={`rounded-full px-2.5 py-1 text-sm font-bold ${
+                    favorites.includes(selectedDorm.id)
+                      ? "bg-red-100 text-red-600"
+                      : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {favorites.includes(selectedDorm.id) ? "♥ Saved" : "♡ Save"}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => toggleFavorite(selectedDorm.id)}
-                className={`rounded-full px-2.5 py-1 text-sm font-bold ${
-                  favorites.includes(selectedDorm.id)
-                    ? "bg-red-100 text-red-600"
-                    : "bg-slate-100 text-slate-600"
-                }`}
-              >
-                {favorites.includes(selectedDorm.id) ? "♥ Saved" : "♡ Save"}
-              </button>
-            </div>
 
-            <div className="mt-4 flex items-center justify-between rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-700">
-              <span>{selectedDorm.area}</span>
-              <span className="font-black text-slate-900">{selectedDorm.price}</span>
+              <div className="mt-4 flex items-center justify-between rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-700">
+                <span>{selectedDorm.area}</span>
+                <span className="font-black text-slate-900">{selectedDorm.price}</span>
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex min-h-[420px] items-center justify-center rounded-[2rem] border border-dashed border-slate-300 bg-white/80 p-8 text-center shadow-sm">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500">No listings yet</p>
+              <h3 className="mt-3 text-2xl font-black text-slate-900">Add a dorm listing to get started.</h3>
+            </div>
+          </div>
+        )}
       </section>
 
       {isCrudOpen && (
@@ -993,69 +1012,71 @@ export default function Home() {
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="grid gap-4 md:grid-cols-2">
-            {filteredDorms.map((dorm) => (
-              <button
-                key={dorm.id}
-                type="button"
-                onClick={() => setSelectedDormId(dorm.id)}
-                className={`overflow-hidden rounded-[1.75rem] border bg-white text-left shadow-sm transition ${
-                  selectedDorm?.id === dorm.id
-                    ? "border-slate-900 ring-2 ring-slate-900/10"
-                    : "border-slate-200 hover:border-slate-300 hover:shadow-md"
-                }`}
-              >
-                <div className="relative">
-                  <img src={dorm.image} alt={dorm.name} className="h-52 w-full object-cover" />
-                  {isLoggedIn && (
-                    <div className="absolute right-3 top-3 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          openEditDorm(dorm);
-                        }}
-                        className="rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-slate-700"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleDeleteDorm(dorm.id);
-                        }}
-                        className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-600"
-                      >
-                        Delete
-                      </button>
+          {hasFilteredListings ? (
+            <>
+              <div className="grid gap-4 md:grid-cols-2">
+                {filteredDorms.map((dorm) => (
+                  <button
+                    key={dorm.id}
+                    type="button"
+                    onClick={() => setSelectedDormId(dorm.id)}
+                    className={`overflow-hidden rounded-[1.75rem] border bg-white text-left shadow-sm transition ${
+                      selectedDorm?.id === dorm.id
+                        ? "border-slate-900 ring-2 ring-slate-900/10"
+                        : "border-slate-200 hover:border-slate-300 hover:shadow-md"
+                    }`}
+                  >
+                    <div className="relative">
+                      <img src={dorm.image} alt={dorm.name} className="h-52 w-full object-cover" />
+                      {isLoggedIn && (
+                        <div className="absolute right-3 top-3 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openEditDorm(dorm);
+                            }}
+                            className="rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-slate-700"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDeleteDorm(dorm.id);
+                            }}
+                            className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-600"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                <div className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">{dorm.area}</p>
-                      <h4 className="mt-2 text-xl font-black text-slate-900">{dorm.name}</h4>
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">{dorm.area}</p>
+                          <h4 className="mt-2 text-xl font-black text-slate-900">{dorm.name}</h4>
+                        </div>
+                        <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-700">
+                          {dorm.rating} ★
+                        </span>
+                      </div>
+
+                      <div className="mt-4 flex items-center justify-between text-sm text-slate-600">
+                        <span>{dorm.gender}</span>
+                        <span className="font-black text-slate-900">{dorm.price}</span>
+                      </div>
+
+                      <p className="mt-3 text-sm leading-6 text-slate-600">{dorm.distance}</p>
                     </div>
-                    <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-700">
-                      {dorm.rating} ★
-                    </span>
-                  </div>
+                  </button>
+                ))}
+              </div>
 
-                  <div className="mt-4 flex items-center justify-between text-sm text-slate-600">
-                    <span>{dorm.gender}</span>
-                    <span className="font-black text-slate-900">{dorm.price}</span>
-                  </div>
-
-                  <p className="mt-3 text-sm leading-6 text-slate-600">{dorm.distance}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          <aside className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-[0_18px_40px_rgba(15,23,42,0.06)] sm:p-5">
+              <aside className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-[0_18px_40px_rgba(15,23,42,0.06)] sm:p-5">
             <div className="rounded-[1.5rem] bg-slate-100 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -1157,26 +1178,34 @@ export default function Home() {
               />
             </div>
           </aside>
+            </>
+          ) : (
+            <div className="flex min-h-[200px] items-center justify-center rounded-[2rem] border border-dashed border-slate-300 bg-white/80 p-8 text-center text-slate-600">
+              No dorms match your current search.
+            </div>
+          )}
         </div>
       </section>
 
-      <section id="gallery" className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-        <div className="mb-6">
-          <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-slate-500">Gallery</p>
-          <h3 className="mt-2 text-3xl font-black text-slate-900">A closer look at {selectedDorm.name}</h3>
-        </div>
+      {hasListings && (
+        <section id="gallery" className="mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+          <div className="mb-6">
+            <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-slate-500">Gallery</p>
+            <h3 className="mt-2 text-3xl font-black text-slate-900">A closer look at {selectedDorm.name}</h3>
+          </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          {selectedDorm.gallery.map((photo, index) => (
-            <img
-              key={`${selectedDorm.id}-${index}`}
-              src={photo}
-              alt={`${selectedDorm.name} room ${index + 1}`}
-              className="h-64 w-full rounded-[1.5rem] object-cover shadow-sm"
-            />
-          ))}
-        </div>
-      </section>
+          <div className="grid gap-4 md:grid-cols-3">
+            {selectedDorm.gallery.map((photo, index) => (
+              <img
+                key={`${selectedDorm.id}-${index}`}
+                src={photo}
+                alt={`${selectedDorm.name} room ${index + 1}`}
+                className="h-64 w-full rounded-[1.5rem] object-cover shadow-sm"
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="mx-auto w-full max-w-7xl px-4 pb-16 pt-6 sm:px-6 lg:px-8">
         <div className="rounded-[2rem] bg-slate-900 p-8 text-white shadow-[0_25px_50px_rgba(15,23,42,0.18)] sm:p-10">

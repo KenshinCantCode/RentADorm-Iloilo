@@ -53,6 +53,12 @@ type DormDraft = {
 const ADMIN_SESSION_KEY = "rentadorm-admin-session";
 const dormStorageKey = "rentadorm-iloilo-dorms";
 const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
+
+const clearDormCache = () => {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(dormStorageKey);
+  }
+};
 const iloiloCenter = { lat: 10.7202, lng: 122.5621 };
 
 const normalizeDormFromRow = (row: Record<string, unknown>): Dorm => ({
@@ -344,26 +350,18 @@ export default function AdminDashboardPage() {
 
         if (error) {
           console.error("Failed to load dorms from Supabase:", error.message);
-          const savedDorms = window.localStorage.getItem(dormStorageKey);
-          if (savedDorms) {
-            try {
-              const parsed = JSON.parse(savedDorms) as Dorm[];
-              if (parsed.length) {
-                setDorms(normalizeDormIdList(parsed));
-              }
-            } catch {
-              setDorms(normalizeDormIdList(defaultDorms));
-            }
-          } else {
-            setDorms(normalizeDormIdList(defaultDorms));
-          }
+          setDorms([]);
+          clearDormCache();
           return;
         }
 
         const rows = normalizeDormIdList((data ?? []).map((row) => normalizeDormFromRow(row as Record<string, unknown>)));
-        setDorms(rows.length ? rows : normalizeDormIdList(defaultDorms));
-      } catch {
-        setDorms(normalizeDormIdList(defaultDorms));
+        setDorms(rows);
+        clearDormCache();
+      } catch (error) {
+        console.error("Unexpected admin dorm load error:", error);
+        setDorms([]);
+        clearDormCache();
       } finally {
         setIsReady(true);
       }
@@ -372,7 +370,11 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (!isReady || typeof window === "undefined") return;
-    window.localStorage.setItem(dormStorageKey, JSON.stringify(dorms));
+
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      window.localStorage.setItem(dormStorageKey, JSON.stringify(dorms));
+    }
   }, [dorms, isReady]);
 
   useEffect(() => {
@@ -574,6 +576,7 @@ export default function AdminDashboardPage() {
           return;
         }
         setDorms((current) => current.map((dorm) => (dorm.id === editingId ? nextDorm : dorm)));
+        clearDormCache();
       } else {
         const { data, error } = await supabase.from("dorms").insert(payload).select();
         if (error) {
@@ -582,6 +585,7 @@ export default function AdminDashboardPage() {
         }
         const record = data?.[0] ? normalizeDormFromRow(data[0] as Record<string, unknown>) : nextDorm;
         setDorms((current) => [record, ...current]);
+        clearDormCache();
       }
     } else {
       setDorms((current) => {
@@ -590,6 +594,7 @@ export default function AdminDashboardPage() {
         }
         return [nextDorm, ...current];
       });
+      clearDormCache();
     }
 
     setIsCrudOpen(false);
@@ -632,6 +637,7 @@ export default function AdminDashboardPage() {
     }
 
     setDorms((current) => current.filter((dorm) => dorm.id !== dormId));
+    clearDormCache();
   };
 
   const handleLogout = async () => {
@@ -641,6 +647,7 @@ export default function AdminDashboardPage() {
     }
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(ADMIN_SESSION_KEY);
+      clearDormCache();
     }
     router.push("/secret-admin");
   };
