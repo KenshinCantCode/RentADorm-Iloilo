@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type Dorm = {
@@ -234,6 +234,7 @@ const dormDraftDefaults: DormDraft = {
 const storage = {
   session: "rentadorm-iloilo-session",
   favorites: "rentadorm-iloilo-favorites",
+  dorms: "rentadorm-iloilo-dorms",
 };
 
 const normalizeDormFromRow = (row: Record<string, unknown>): Dorm => ({
@@ -378,6 +379,35 @@ export default function Home() {
       window.localStorage.setItem(storage.favorites, JSON.stringify(favorites));
     }
   }, [favorites]);
+
+  const hasHydratedDormCacheRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const savedDorms = window.localStorage.getItem(storage.dorms);
+    if (savedDorms) {
+      try {
+        const parsed = JSON.parse(savedDorms) as Dorm[];
+        if (Array.isArray(parsed) && parsed.length) {
+          setDorms(parsed);
+          setSelectedDormId((current) => (parsed.some((dorm) => dorm.id === current) ? current : parsed[0].id));
+        }
+      } catch {
+        // Ignore invalid cached dorm data and allow the live Supabase data to populate.
+      }
+    }
+
+    hasHydratedDormCacheRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydratedDormCacheRef.current || typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(storage.dorms, JSON.stringify(dorms));
+  }, [dorms]);
 
   const areas = useMemo(() => ["All", ...new Set(dorms.map((dorm) => dorm.area))], [dorms]);
 

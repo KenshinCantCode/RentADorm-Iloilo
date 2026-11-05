@@ -616,6 +616,9 @@ export default function AdminDashboardPage() {
       const { error } = await supabase.from("dorms").delete().eq("id", dormId);
       if (error) {
         console.error("Delete dorm failed:", error.message);
+        if (typeof window !== "undefined") {
+          window.alert(`Delete failed: ${error.message}`);
+        }
         return;
       }
     }
