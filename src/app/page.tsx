@@ -236,6 +236,7 @@ export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [session, setSession] = useState<UserSession | null>(null);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
   const [authError, setAuthError] = useState("");
   const [isCrudOpen, setIsCrudOpen] = useState(false);
@@ -468,9 +469,11 @@ export default function Home() {
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-lg font-black text-white shadow-lg shadow-amber-200">
-              R
-            </div>
+            <img
+              src="/favicon.ico"
+              alt="RentaDorm Iloilo logo"
+              className="h-11 w-11 rounded-2xl object-cover shadow-lg shadow-amber-200"
+            />
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-amber-700">
                 Rent a room
@@ -485,12 +488,14 @@ export default function Home() {
             <a href="#gallery" className="transition hover:text-slate-950">Gallery</a>
           </nav>
 
-          <Link
-            href="/admin/login"
-            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-slate-200 transition hover:bg-slate-800"
-          >
-            Admin login
-          </Link>
+          {showAdminLogin && (
+            <Link
+              href="/admin/login"
+              className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-slate-200 transition hover:bg-slate-800"
+            >
+              Admin login
+            </Link>
+          )}
         </div>
       </header>
 

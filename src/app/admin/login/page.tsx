@@ -24,6 +24,11 @@ export default function AdminLoginPage() {
       return;
     }
 
+    if (window.location.pathname !== "/secret-admin") {
+      router.replace("/secret-admin");
+      return;
+    }
+
     setIsChecking(false);
   }, [router]);
 
