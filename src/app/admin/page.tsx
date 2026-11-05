@@ -5,6 +5,13 @@ import { createClient } from "@/lib/supabase/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+type RoomOption = {
+  name: string;
+  price: string;
+  features: string[];
+  status: "Available" | "Reserved" | "Unavailable";
+};
+
 type Dorm = {
   id: string;
   name: string;
@@ -16,6 +23,7 @@ type Dorm = {
   beds: string;
   description: string;
   amenities: string[];
+  roomTypes?: RoomOption[];
   ownerName: string;
   ownerPhone: string;
   ownerEmail: string;
@@ -38,6 +46,7 @@ type DormDraft = {
   beds: string;
   description: string;
   amenities: string;
+  roomTypes: string;
   ownerName: string;
   ownerPhone: string;
   ownerEmail: string;
@@ -54,12 +63,84 @@ const ADMIN_SESSION_KEY = "rentadorm-admin-session";
 const dormStorageKey = "rentadorm-iloilo-dorms";
 const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
 
+const defaultRoomTypes: RoomOption[] = [
+  {
+    name: "Fan room",
+    price: "₱2,800/mo",
+    features: ["Shared bathroom", "Fan", "Study area"],
+    status: "Available",
+  },
+  {
+    name: "Air-conditioned room",
+    price: "₱3,600/mo",
+    features: ["Aircon", "Private sink", "Laundry access"],
+    status: "Available",
+  },
+];
+
+const parseRoomTypesInput = (value: string): RoomOption[] => {
+  const lines = value
+    .split(/\n|;/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (!lines.length) {
+    return defaultRoomTypes;
+  }
+
+  return lines.map((line) => {
+    const segments = line.split("|").map((segment) => segment.trim());
+    const name = segments[0] || "Room option";
+    const price = segments[1] || "₱0/mo";
+    const features = segments.length > 2
+      ? segments.slice(2).join("|").split(",").map((feature) => feature.trim()).filter(Boolean)
+      : ["Shared amenities"];
+
+    return {
+      name,
+      price,
+      features,
+      status: "Available",
+    };
+  });
+};
+
 const clearDormCache = () => {
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(dormStorageKey);
   }
 };
 const iloiloCenter = { lat: 10.7202, lng: 122.5621 };
+
+const normalizeRoomTypes = (value: unknown): RoomOption[] => {
+  if (Array.isArray(value)) {
+    if (value.some((entry) => typeof entry === "object" && entry !== null)) {
+      return (value as Array<Record<string, unknown>>).map((entry) => ({
+        name: String(entry.name ?? "Room option"),
+        price: String(entry.price ?? "₱0/mo"),
+        features: Array.isArray(entry.features)
+          ? (entry.features as unknown[]).map((feature) => String(feature))
+          : [],
+        status: (entry.status as RoomOption["status"]) ?? "Available",
+      }));
+    }
+
+    const parsed = (value as unknown[])
+      .map((entry) => {
+        const normalized = String(entry ?? "").trim();
+        return normalized ? { name: normalized, price: "₱0/mo", features: ["Shared amenities"], status: "Available" as const } : null;
+      })
+      .filter(Boolean) as RoomOption[];
+
+    return parsed.length ? parsed : defaultRoomTypes;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    return parseRoomTypesInput(value);
+  }
+
+  return defaultRoomTypes;
+};
 
 const normalizeDormFromRow = (row: Record<string, unknown>): Dorm => ({
   id: String(row.id ?? ""),
@@ -72,6 +153,7 @@ const normalizeDormFromRow = (row: Record<string, unknown>): Dorm => ({
   beds: String(row.beds ?? "Single room"),
   description: String(row.description ?? "A cozy Iloilo dorm listing."),
   amenities: Array.isArray(row.amenities) ? (row.amenities as string[]) : ["Wi-Fi", "Security"],
+  roomTypes: normalizeRoomTypes(row.room_types ?? row.roomTypes),
   ownerName: String(row.owner_name ?? row.ownerName ?? "Dorm owner"),
   ownerPhone: String(row.owner_phone ?? row.ownerPhone ?? "+63 912 345 6789"),
   ownerEmail: String(row.owner_email ?? row.ownerEmail ?? "owner@rentadormiloilo.com"),
@@ -214,6 +296,7 @@ const draftDefaults: DormDraft = {
   beds: "Single room",
   description: "",
   amenities: "Wi-Fi, Security, Laundry",
+  roomTypes: "Fan room | ₱2,800/mo | Shared bathroom, Fan\nAir-conditioned room | ₱3,600/mo | Aircon, Private sink",
   ownerName: "",
   ownerPhone: "",
   ownerEmail: "",
@@ -494,6 +577,9 @@ export default function AdminDashboardPage() {
       beds: dorm.beds,
       description: dorm.description,
       amenities: dorm.amenities.join(", "),
+      roomTypes: (dorm.roomTypes ?? defaultRoomTypes)
+        .map((item) => `${item.name} | ${item.price} | ${item.features.join(", ")}`)
+        .join("\n"),
       ownerName: dorm.ownerName,
       ownerPhone: dorm.ownerPhone,
       ownerEmail: dorm.ownerEmail,
@@ -521,6 +607,8 @@ export default function AdminDashboardPage() {
       .map((item) => item.trim())
       .filter(Boolean);
 
+    const parsedRoomTypes = parseRoomTypesInput(draft.roomTypes || "");
+
     const nextDorm: Dorm = {
       id: editingId ?? createDormId(),
       name: draft.name.trim(),
@@ -532,6 +620,7 @@ export default function AdminDashboardPage() {
       beds: draft.beds,
       description: draft.description.trim(),
       amenities: cleanAmenities.length ? cleanAmenities : ["Wi-Fi", "Security"],
+      roomTypes: parsedRoomTypes.length ? parsedRoomTypes : defaultRoomTypes,
       ownerName: draft.ownerName.trim() || "Dorm owner",
       ownerPhone: draft.ownerPhone.trim() || "+63 912 345 6789",
       ownerEmail: draft.ownerEmail.trim() || "owner@rentadormiloilo.com",
@@ -557,6 +646,7 @@ export default function AdminDashboardPage() {
         beds: nextDorm.beds,
         description: nextDorm.description,
         amenities: nextDorm.amenities,
+        room_types: nextDorm.roomTypes ?? [],
         owner_name: nextDorm.ownerName,
         owner_phone: nextDorm.ownerPhone,
         owner_email: nextDorm.ownerEmail,
@@ -886,6 +976,17 @@ export default function AdminDashboardPage() {
                   value={draft.amenities}
                   onChange={(event) => setDraft((current) => ({ ...current, amenities: event.target.value }))}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-400"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Room types</label>
+                <textarea
+                  rows={4}
+                  value={draft.roomTypes}
+                  onChange={(event) => setDraft((current) => ({ ...current, roomTypes: event.target.value }))}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-400"
+                  placeholder={'Fan room | ₱2,800/mo | Shared bathroom, Fan\nAir-conditioned room | ₱3,600/mo | Aircon, Private sink'}
                 />
               </div>
 

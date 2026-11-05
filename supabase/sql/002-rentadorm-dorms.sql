@@ -10,6 +10,7 @@ create table if not exists public.dorms (
   beds text,
   description text,
   amenities text[] not null default array[]::text[],
+  room_types jsonb not null default '[]'::jsonb,
   owner_name text,
   owner_phone text,
   owner_email text,
