@@ -4,6 +4,14 @@ const nextConfig: NextConfig = {
   experimental: {
     agentUpgrade: "security",
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "images.unsplash.com",
+      },
+    ],
+  },
   // Cache Components and Partial Prefetching are deliberately OFF.
   //
   // With them on, any page that reads from the database (or uses

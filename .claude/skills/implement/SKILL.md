@@ -22,10 +22,10 @@ which command to run first. No spec, no code.
    simple: no abstractions the ticket does not need.
 3. **Database changes** go in a numbered SQL file under `supabase/sql/`
    (for example `002-create-bookings.sql`). Every new table's SQL must
-   enable Row Level Security and create its policies in the same file —
-   see `001-example.sql` for the shape. Show the team the SQL and tell
-   them to run it in the Supabase dashboard's SQL Editor. Wait for them
-   to confirm it ran before continuing.
+   enable Row Level Security and create its policies in the same file.
+   Show the team the SQL and tell them to run it in the Supabase
+   dashboard's SQL Editor. Wait for them to confirm it ran before
+   continuing.
 4. **Check it builds:** run `npm run build`. This is exactly what Vercel
    runs — if it fails here, it will fail there. Fix every error before
    moving on. A small test for tricky logic is welcome, not required.

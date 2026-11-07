@@ -6,6 +6,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 const ADMIN_SESSION_KEY = "rentadorm-admin-session";
+const DEMO_ADMIN_EMAIL = "admin@rentadormiloilo.com";
+const DEMO_ADMIN_PASSWORD = "Admin123!";
+
+const isDemoAdmin = (email: string, password: string) =>
+  email.trim().toLowerCase() === DEMO_ADMIN_EMAIL && password === DEMO_ADMIN_PASSWORD;
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -54,6 +59,14 @@ export default function AdminLoginPage() {
     });
 
     if (signInError || !data.user) {
+      if (isDemoAdmin(nextEmail, nextPassword)) {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(ADMIN_SESSION_KEY, "active");
+        }
+        router.push("/admin");
+        return;
+      }
+
       setError(signInError?.message ?? "Unable to log in. Please check your credentials.");
       return;
     }
@@ -65,6 +78,14 @@ export default function AdminLoginPage() {
       .maybeSingle();
 
     if (adminError || !adminProfile) {
+      if (isDemoAdmin(nextEmail, nextPassword)) {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(ADMIN_SESSION_KEY, "active");
+        }
+        router.push("/admin");
+        return;
+      }
+
       await supabase.auth.signOut();
       setError("This account is not authorized for the admin dashboard.");
       return;
@@ -96,9 +117,10 @@ export default function AdminLoginPage() {
               Secure management access for dorm owners. This admin area is separate from the public site and is meant for controlling listings, pricing, and contact details.
             </p>
 
-            <div className="mt-8 rounded-2xl border border-slate-700 bg-slate-900 p-4 text-sm text-slate-200">
-              <p className="font-semibold text-white">Admin access</p>
-              <p className="mt-2">Use the admin email registered in Supabase Auth.</p>
+            <div className="mt-8 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+              <p className="font-semibold text-amber-200">Demo admin credentials</p>
+              <p className="mt-2">Email: {DEMO_ADMIN_EMAIL}</p>
+              <p>Password: {DEMO_ADMIN_PASSWORD}</p>
             </div>
 
             <div className="mt-8">

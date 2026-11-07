@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
 import { createClient } from "@/lib/supabase/client";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -367,12 +368,35 @@ const applyLocationDetails = (value: string, currentDraft: DormDraft) => {
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const [dorms, setDorms] = useState<Dorm[]>(normalizeDormIdList(defaultDorms));
+  const [dorms, setDorms] = useState<Dorm[]>(() => {
+    if (typeof window === "undefined") {
+      return normalizeDormIdList(defaultDorms);
+    }
+
+    const savedDorms = window.localStorage.getItem(dormStorageKey);
+    if (!savedDorms) {
+      return normalizeDormIdList(defaultDorms);
+    }
+
+    try {
+      const parsed = JSON.parse(savedDorms) as Dorm[];
+      return parsed.length ? normalizeDormIdList(parsed) : normalizeDormIdList(defaultDorms);
+    } catch {
+      return normalizeDormIdList(defaultDorms);
+    }
+  });
   const [searchQuery, setSearchQuery] = useState("");
   const [draft, setDraft] = useState<DormDraft>(draftDefaults);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isCrudOpen, setIsCrudOpen] = useState(false);
-  const [isReady, setIsReady] = useState(false);
+  const [isReady, setIsReady] = useState(() => {
+    if (typeof window === "undefined") return true;
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      return window.localStorage.getItem(ADMIN_SESSION_KEY) === "active";
+    }
+    return false;
+  });
   const [selectedMapPin, setSelectedMapPin] = useState<string | null>(null);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
@@ -382,19 +406,12 @@ export default function AdminDashboardPage() {
     if (typeof window === "undefined") return;
 
     const supabase = getSupabaseClient();
+    const hasLocalAdminSession = window.localStorage.getItem(ADMIN_SESSION_KEY) === "active";
+
     if (!supabase) {
-      const savedDorms = window.localStorage.getItem(dormStorageKey);
-      if (savedDorms) {
-        try {
-          const parsed = JSON.parse(savedDorms) as Dorm[];
-          if (parsed.length) {
-            setDorms(normalizeDormIdList(parsed));
-          }
-        } catch {
-          setDorms(normalizeDormIdList(defaultDorms));
-        }
+      if (!hasLocalAdminSession) {
+        router.replace("/secret-admin");
       }
-      setIsReady(true);
       return;
     }
 
@@ -820,7 +837,7 @@ export default function AdminDashboardPage() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredDorms.map((dorm) => (
             <article key={dorm.id} className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-sm">
-              <img src={dorm.image} alt={dorm.name} className="h-52 w-full object-cover" />
+              <Image src={dorm.image} alt={dorm.name} width={800} height={208} className="h-52 w-full object-cover" />
               <div className="p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>

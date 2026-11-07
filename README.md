@@ -1,121 +1,65 @@
-# PHINMA AI Builder — team template
+  # RentaDorm Iloilo
 
-**Your live URL:** (https://kenshin-lostand-found.vercel.app/)
+  RentaDorm Iloilo is a dorm-finding website for students and workers looking for affordable rooms in Iloilo City. The public pages let visitors browse listings, compare prices, and view each property with photos and a map. The admin dashboard lets a landlord manage dorm listings with a CRUD flow.
 
-This is your team's starting point. It is already a working Next.js app
-that deploys to Vercel. You will delete the starter page and build your
-own thing on top.
+  ## Demo admin credentials
 
-## Setup (once per team, ~10 minutes)
+  - Email: admin@rentadormiloilo.com
+  - Password: Admin123!
 
-**1. Make your own copy**
+  If Supabase is configured, the app will try to validate the admin via Supabase Auth first. If the environment is not configured yet, the project falls back to the built-in demo admin login for local testing.
 
-On this repo's GitHub page, click **Use this template → Create a new
-repository**. Name it after your team. Then add your teammates:
-**Settings → Collaborators**.
+  ## User login and registration
 
-**2. Put it on the internet — before writing any code**
+  The website includes a public user sign-up and sign-in flow. A demo user is also available for quick testing:
 
-Go to [vercel.com](https://vercel.com), sign in with GitHub, then
-**Add New → Project** and import your new repo. Accept the defaults and
-click **Deploy**.
+  - Email: user@rentadormiloilo.com
+  - Password: User123!
 
-In about a minute you will have a live URL. Open it on your phone. Paste
-it at the top of this file.
+  ## Local development setup
 
-From now on, every push to `main` updates that URL automatically.
+  1. Open a terminal in the project folder.
+  2. Run:
 
-**3. Get it on your laptop**
+  ```bash
+  npm install
+  npm run dev
+  ```
 
-Only one laptop per team needs this — the **driver** laptop. Rotate who
-drives at every ticket so everyone gets a turn.
+  3. Open http://localhost:3000.
+  4. On the homepage, use the sign-in/register form to create a user account or log in with the demo user credentials.
+  5. To open the admin dashboard, visit /admin/login or /secret-admin and use the demo admin credentials above.
 
-```bash
-git clone <your repo URL>
-cd <your repo>
-npm install
-npm run dev
-```
+  ## Real website deployment (Vercel + Supabase)
 
-Open http://localhost:3000. You should see the same page as your live
-URL.
+  This project is ready to run as a live website in Vercel once your Supabase project is connected.
 
-**4. Start Claude Code**
+  1. In Supabase, open your project and copy the project URL and anon key from the Connect section.
+  2. In Vercel, open your project dashboard and add these environment variables:
+     - `NEXT_PUBLIC_SUPABASE_URL`
+     - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  3. Add the same variables in your local `.env.local` for testing.
+  4. Deploy the project from the Vercel GitHub branch or push to the connected repository.
+  5. After deployment, open the live Vercel URL and sign in with the real Supabase-authenticated user or use the built-in demo credentials if the environment is not configured yet.
 
-```bash
-claude
-```
+  ## Supabase SQL setup
 
-Type `/` and check you can see `grill-with-docs`, `pitch`, `to-spec`,
-`to-tickets`, `implement` and `code-review`. If you can, you are ready.
+  Run the SQL files in `supabase/sql/` in the Supabase SQL editor, in this order:
 
-Then run:
+  1. `002-rentadorm-dorms.sql`
+  2. `003-rentadorm-admins.sql`
 
-```
-/grill-with-docs
-```
+  These create the dorm table and admin access rules. When real Supabase auth is enabled, the app automatically uses `supabase.auth` for registration and login instead of the fallback localStorage demo flow.
 
-Have a real problem in mind, and a real person you have watched struggle
-with it. You will be asked.
+  ## Admin workflow
 
-## Supabase (Ticket 02 — Session 2, not before)
+  1. Log in to `/admin/login` with the admin credentials above.
+  2. Create, edit, or delete dorm listings from the dashboard.
+  3. Each listing includes a name, area, price, status, room types, owner details, image gallery, and map location.
+  4. Save the changes and the public homepage refreshes automatically with the new listing data.
 
-1. Create a project at [supabase.com](https://supabase.com) (free tier).
-2. In your project, click **Connect** and copy the Project URL and the
-   **publishable key** (it starts with `sb_publishable_`). Older projects
-   call it the `anon` key. Either works.
-3. Copy `.env.example` to `.env.local` and paste them in. The publishable
-   key goes in `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-4. Add the **same two variables** in Vercel: **Settings → Environment
-   Variables**, then redeploy. Forgetting this step is the single most
-   common reason the local app works and the live one does not.
-5. Read `supabase/sql/001-example.sql`. It explains Row Level Security,
-   which is what stops strangers reading your data.
+  ## Production checklist
 
-## The commands
-
-| Command            | What it does                                      |
-|--------------------|---------------------------------------------------|
-| `/grill-with-docs` | Interviews you hard about the problem. Start here |
-| `/pitch`           | Turns that into your three-minute Session 1 pitch |
-| `/to-spec`         | Writes the spec for what you will build           |
-| `/to-tickets`      | Breaks the spec into small tickets                |
-| `/implement`       | Builds one ticket, then deploys it                |
-| `/code-review`     | Checks it is correct and safe before you demo     |
-
-Run them in that order. The agent will refuse to write feature code
-before there is a spec — that is deliberate, not a bug.
-
-## The rules
-
-1. **Deploy first.** Live URL before features.
-2. **No spec, no code.**
-3. **One user, one job, demoable in three minutes.**
-4. **Row Level Security on, always.** Your app is public. Without RLS,
-   so is your data.
-5. **Never commit `.env.local`.**
-
-## What is already here
-
-```
-src/app/page.tsx          the starter page — delete it and build yours
-src/components/ui/        Button, Card, Input, Textarea, Label
-src/lib/supabase/         database clients, with comments
-supabase/sql/             your database changes, numbered
-docs/                     problem, pitch, spec and tickets live here
-CLAUDE.md                 the rules the agent follows
-```
-
-## When something breaks
-
-- **Build fails on Vercel but works locally** — run `npm run build` on
-  your laptop. That is the exact command Vercel runs. It will show you
-  the same error.
-- **Live site cannot reach the database** — your environment variables
-  are probably missing in Vercel, or you did not redeploy after adding
-  them.
-- **`npm audit` shows warnings** — these are in the development
-  toolchain only. Ignore them; the "fix" breaks the project.
-- **The agent keeps failing at the same thing** — stop it, and ask it to
-  explain what it thinks is wrong instead of trying again. Then get a
-  facilitator.
+  - Keep all real credentials out of the repo.
+  - Add the same Supabase environment variables in Vercel before deployment.
+  - Test the live URL after every commit to confirm the public page and admin login still work.

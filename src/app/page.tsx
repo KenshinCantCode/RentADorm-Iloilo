@@ -1,7 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type RoomOption = {
@@ -287,6 +288,50 @@ const storage = {
   session: "rentadorm-iloilo-session",
   favorites: "rentadorm-iloilo-favorites",
   dorms: "rentadorm-iloilo-dorms",
+  users: "rentadorm-iloilo-users",
+};
+
+const DEMO_USER = {
+  name: "Demo Renter",
+  email: "user@rentadormiloilo.com",
+  password: "User123!",
+};
+
+const hasSupabaseCredentials = () => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  return Boolean(url && anonKey && url.includes("supabase.co"));
+};
+
+const getStoredUsers = (): Array<{ email: string; name: string; password: string }> => {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(storage.users);
+    if (!rawValue) {
+      return [];
+    }
+
+    const parsedValue = JSON.parse(rawValue) as unknown;
+    if (!Array.isArray(parsedValue)) {
+      return [];
+    }
+
+    return parsedValue.filter((entry): entry is { email: string; name: string; password: string } =>
+      typeof entry === "object" && entry !== null && typeof (entry as { email?: unknown }).email === "string",
+    );
+  } catch {
+    return [];
+  }
+};
+
+const saveStoredUsers = (users: Array<{ email: string; name: string; password: string }>) => {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(storage.users, JSON.stringify(users));
+  }
 };
 
 const clearDormCache = () => {
@@ -396,16 +441,87 @@ const areaOptions = [
 ];
 
 export default function Home() {
-  const [dorms, setDorms] = useState<Dorm[]>(normalizeDormIdList(defaultDorms));
+  const [dorms, setDorms] = useState<Dorm[]>(() => {
+    if (typeof window === "undefined") {
+      return normalizeDormIdList(defaultDorms);
+    }
+
+    const savedDorms = window.localStorage.getItem(storage.dorms);
+    if (!savedDorms) {
+      return normalizeDormIdList(defaultDorms);
+    }
+
+    try {
+      const parsed = JSON.parse(savedDorms) as Dorm[];
+      if (Array.isArray(parsed) && parsed.length) {
+        return normalizeDormIdList(parsed);
+      }
+    } catch {
+      // Ignore invalid cached dorm data.
+    }
+
+    return normalizeDormIdList(defaultDorms);
+  });
   const [selectedArea, setSelectedArea] = useState("All");
   const [selectedStatus, setSelectedStatus] = useState("All");
-  const [selectedDormId, setSelectedDormId] = useState(normalizeDormIdList(defaultDorms)[0].id);
+  const [selectedDormId, setSelectedDormId] = useState<string>(() => {
+    if (typeof window === "undefined") {
+      return normalizeDormIdList(defaultDorms)[0].id;
+    }
+
+    const savedDorms = window.localStorage.getItem(storage.dorms);
+    if (!savedDorms) {
+      return normalizeDormIdList(defaultDorms)[0].id;
+    }
+
+    try {
+      const parsed = JSON.parse(savedDorms) as Dorm[];
+      if (Array.isArray(parsed) && parsed.length) {
+        const normalized = normalizeDormIdList(parsed);
+        return normalized[0].id;
+      }
+    } catch {
+      // Ignore invalid cached dorm data.
+    }
+
+    return normalizeDormIdList(defaultDorms)[0].id;
+  });
   const [searchQuery, setSearchQuery] = useState("");
-  const [favorites, setFavorites] = useState<string[]>([]);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [session, setSession] = useState<UserSession | null>(null);
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    if (typeof window === "undefined") {
+      return [];
+    }
+
+    const savedFavorites = window.localStorage.getItem(storage.favorites);
+    if (!savedFavorites) {
+      return [];
+    }
+
+    try {
+      return JSON.parse(savedFavorites) as string[];
+    } catch {
+      return [];
+    }
+  });
+  const [session, setSession] = useState<UserSession | null>(() => {
+    if (typeof window === "undefined") {
+      return null;
+    }
+
+    const savedSession = window.localStorage.getItem(storage.session);
+    if (!savedSession) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(savedSession) as UserSession;
+    } catch {
+      return null;
+    }
+  });
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => Boolean(session));
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [showAdminLogin] = useState(true);
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
   const [authError, setAuthError] = useState("");
   const [isCrudOpen, setIsCrudOpen] = useState(false);
@@ -415,32 +531,8 @@ export default function Home() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const savedSession = window.localStorage.getItem(storage.session);
-    const savedFavorites = window.localStorage.getItem(storage.favorites);
-
-    if (savedSession) {
-      try {
-        const parsed = JSON.parse(savedSession) as UserSession;
-        setSession(parsed);
-        setIsLoggedIn(true);
-      } catch {
-        setSession(null);
-      }
-    }
-
-    if (savedFavorites) {
-      try {
-        setFavorites(JSON.parse(savedFavorites) as string[]);
-      } catch {
-        setFavorites([]);
-      }
-    }
-
     const supabase = getSupabaseClient();
     if (!supabase) {
-      const seededDorms = normalizeDormIdList(defaultDorms);
-      setDorms(seededDorms);
-      setSelectedDormId(seededDorms[0].id);
       return;
     }
 
@@ -454,7 +546,6 @@ export default function Home() {
         if (error) {
           console.error("Failed to load dorms from Supabase:", error.message);
           setDorms([]);
-          setSelectedDormId("");
           return;
         }
 
@@ -475,40 +566,60 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      return;
+    }
+
+    window.localStorage.setItem(storage.dorms, JSON.stringify(dorms));
+  }, [dorms]);
+
+  useEffect(() => {
+    if (!hasSupabaseCredentials()) {
+      return;
+    }
+
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      return;
+    }
+
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (error || !data.session?.user) {
+        return;
+      }
+
+      const email = data.session.user.email ?? "";
+      setSession({ email, name: data.session.user.user_metadata?.full_name ?? "Dorm Seeker" });
+      setIsLoggedIn(true);
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!nextSession?.user) {
+        setSession(null);
+        setIsLoggedIn(false);
+        return;
+      }
+
+      const email = nextSession.user.email ?? "";
+      setSession({ email, name: nextSession.user.user_metadata?.full_name ?? "Dorm Seeker" });
+      setIsLoggedIn(true);
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(storage.favorites, JSON.stringify(favorites));
     }
   }, [favorites]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      const savedDorms = window.localStorage.getItem(storage.dorms);
-      if (savedDorms) {
-        try {
-          const parsed = JSON.parse(savedDorms) as Dorm[];
-          if (Array.isArray(parsed) && parsed.length) {
-            const normalized = normalizeDormIdList(parsed);
-            setDorms(normalized);
-            setSelectedDormId((current) => (normalized.some((dorm) => dorm.id === current) ? current : normalized[0].id));
-          }
-        } catch {
-          // Ignore invalid cached dorm data when the app is not connected to Supabase.
-        }
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      window.localStorage.setItem(storage.dorms, JSON.stringify(dorms));
-    }
-  }, [dorms]);
 
   const areas = useMemo(() => ["All", ...new Set(dorms.map((dorm) => dorm.area))], [dorms]);
 
@@ -527,14 +638,13 @@ export default function Home() {
     });
   }, [dorms, searchQuery, selectedArea, selectedStatus]);
 
-  useEffect(() => {
-    if (!filteredDorms.some((dorm) => dorm.id === selectedDormId) && filteredDorms[0]) {
-      setSelectedDormId(filteredDorms[0].id);
-    }
-  }, [filteredDorms, selectedDormId]);
+  const activeSelectedDormId =
+    filteredDorms.some((dorm) => dorm.id === selectedDormId)
+      ? selectedDormId
+      : filteredDorms[0]?.id ?? dorms[0]?.id ?? defaultDorms[0].id;
 
   const selectedDorm =
-    filteredDorms.find((dorm) => dorm.id === selectedDormId) ?? filteredDorms[0] ?? dorms[0] ?? defaultDorms[0];
+    filteredDorms.find((dorm) => dorm.id === activeSelectedDormId) ?? filteredDorms[0] ?? dorms[0] ?? defaultDorms[0];
 
   const hasListings = dorms.length > 0;
   const hasFilteredListings = filteredDorms.length > 0;
@@ -577,11 +687,11 @@ export default function Home() {
     setIsCrudOpen(true);
   };
 
-  const handleAuthSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleAuthSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setAuthError("");
 
-    const email = authForm.email.trim();
+    const email = authForm.email.trim().toLowerCase();
     const password = authForm.password.trim();
 
     if (!email || !password) {
@@ -589,39 +699,181 @@ export default function Home() {
       return;
     }
 
-    if (authMode === "register") {
-      const name = authForm.name.trim() || "Dorm Owner";
-      const userPayload = { email, name };
+    const supabase = hasSupabaseCredentials() ? getSupabaseClient() : null;
 
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(storage.session, JSON.stringify(userPayload));
+    if (supabase) {
+      if (authMode === "register") {
+        const name = authForm.name.trim() || "Dorm Seeker";
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { full_name: name } },
+        });
+
+        if (error) {
+          setAuthError(error.message || "Unable to create your account right now.");
+          return;
+        }
+
+        if (!data.user) {
+          setAuthError("Your account was created, but please confirm the email before signing in.");
+          return;
+        }
+
+        const sessionUser = {
+          email: data.user.email ?? email,
+          name: data.user.user_metadata?.full_name ?? name,
+        };
+
+        setSession(sessionUser);
+        setIsLoggedIn(true);
+        setAuthForm({ name: "", email: "", password: "" });
+        return;
       }
 
-      setSession(userPayload);
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        const storedUsers = getStoredUsers();
+        const matchingUser = storedUsers.find(
+          (user) => user.email.toLowerCase() === email && user.password === password,
+        );
+
+        if (matchingUser) {
+          const sessionUser = {
+            email: matchingUser.email,
+            name: matchingUser.name || "Dorm Seeker",
+          };
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(storage.session, JSON.stringify(sessionUser));
+          }
+          setSession(sessionUser);
+          setIsLoggedIn(true);
+          setAuthForm({ name: "", email: "", password: "" });
+          return;
+        }
+
+        if (email === DEMO_USER.email && password === DEMO_USER.password) {
+          const sessionUser = { email: DEMO_USER.email, name: DEMO_USER.name };
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(storage.session, JSON.stringify(sessionUser));
+          }
+          setSession(sessionUser);
+          setIsLoggedIn(true);
+          setAuthForm({ name: "", email: "", password: "" });
+          return;
+        }
+
+        setAuthError(error.message || "No account matched that email and password. Please register first or try the demo user credentials.");
+        return;
+      }
+
+      const sessionUser = {
+        email: data.user.email ?? email,
+        name: data.user.user_metadata?.full_name ?? "Dorm Seeker",
+      };
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(storage.session, JSON.stringify(sessionUser));
+      }
+
+      setSession(sessionUser);
       setIsLoggedIn(true);
       setAuthForm({ name: "", email: "", password: "" });
       return;
     }
 
-    const stored = window.localStorage.getItem(storage.session);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as UserSession;
-        if (parsed.email === email) {
-          setSession(parsed);
-          setIsLoggedIn(true);
-          setAuthForm({ name: "", email: "", password: "" });
-          return;
+    const storedUsers = getStoredUsers();
+
+    if (authMode === "register") {
+      const normalizedEmail = email.toLowerCase();
+      const hasExistingAccount = storedUsers.some((user) => user.email.toLowerCase() === normalizedEmail);
+
+      if (hasExistingAccount) {
+        setAuthError("That email is already registered. Please log in instead.");
+        return;
+      }
+
+      const name = authForm.name.trim() || "Dorm Seeker";
+      const userPayload: UserSession & { password: string } = {
+        name,
+        email: normalizedEmail,
+        password,
+      };
+
+      const nextUsers = [...storedUsers, userPayload];
+      saveStoredUsers(nextUsers);
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(storage.session, JSON.stringify({ email: normalizedEmail, name }));
+      }
+
+      setSession({ email: normalizedEmail, name });
+      setIsLoggedIn(true);
+      setAuthForm({ name: "", email: "", password: "" });
+      return;
+    }
+
+    const matchingUser = storedUsers.find(
+      (user) => user.email.toLowerCase() === email && user.password === password,
+    );
+
+    if (matchingUser) {
+      const sessionUser = {
+        email: matchingUser.email,
+        name: matchingUser.name || "Dorm Seeker",
+      };
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(storage.session, JSON.stringify(sessionUser));
+      }
+
+      setSession(sessionUser);
+      setIsLoggedIn(true);
+      setAuthForm({ name: "", email: "", password: "" });
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem(storage.session);
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored) as UserSession;
+          if (parsed.email === email) {
+            setSession(parsed);
+            setIsLoggedIn(true);
+            setAuthForm({ name: "", email: "", password: "" });
+            return;
+          }
+        } catch {
+          // ignore bad session
         }
-      } catch {
-        // ignore bad session
       }
     }
 
-    setAuthError("No saved account was found for that email. Please register first.");
+    if (email === DEMO_USER.email && password === DEMO_USER.password) {
+      const sessionUser = { email: DEMO_USER.email, name: DEMO_USER.name };
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(storage.session, JSON.stringify(sessionUser));
+        saveStoredUsers([
+          ...storedUsers,
+          { email: DEMO_USER.email, name: DEMO_USER.name, password: DEMO_USER.password },
+        ]);
+      }
+      setSession(sessionUser);
+      setIsLoggedIn(true);
+      setAuthForm({ name: "", email: "", password: "" });
+      return;
+    }
+
+    setAuthError("No account matched that email and password. Please register first or try the demo user credentials.");
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const supabase = hasSupabaseCredentials() ? getSupabaseClient() : null;
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
+
     setIsLoggedIn(false);
     setSession(null);
     if (typeof window !== "undefined") {
@@ -714,10 +966,12 @@ export default function Home() {
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
-            <img
+            <Image
               src="/favicon.ico"
               alt="RentaDorm Iloilo logo"
-              className="h-11 w-11 rounded-2xl object-cover shadow-lg shadow-amber-200"
+              width={44}
+              height={44}
+              className="rounded-2xl object-cover shadow-lg shadow-amber-200"
             />
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-amber-700">
@@ -789,9 +1043,99 @@ export default function Home() {
           </div>
         </div>
 
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
+          {isLoggedIn && session ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl bg-amber-50 p-4">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-700">Welcome back</p>
+                <h3 className="mt-2 text-2xl font-black text-slate-900">{session.name}</h3>
+                <p className="mt-1 text-sm text-slate-600">{session.email}</p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full rounded-full border border-slate-200 bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-200"
+              >
+                Log out
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleAuthSubmit} className="space-y-4">
+              <div className="flex rounded-full border border-slate-200 bg-slate-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setAuthMode("login")}
+                  className={`flex-1 rounded-full px-3 py-2 text-sm font-semibold transition ${
+                    authMode === "login" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"
+                  }`}
+                >
+                  Login
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuthMode("register")}
+                  className={`flex-1 rounded-full px-3 py-2 text-sm font-semibold transition ${
+                    authMode === "register" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"
+                  }`}
+                >
+                  Register
+                </button>
+              </div>
+
+              {authMode === "register" && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Full name</label>
+                  <input
+                    value={authForm.name}
+                    onChange={(event) => setAuthForm((current) => ({ ...current, name: event.target.value }))}
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-400"
+                    placeholder="Your name"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
+                <input
+                  type="email"
+                  value={authForm.email}
+                  onChange={(event) => setAuthForm((current) => ({ ...current, email: event.target.value }))}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-400"
+                  placeholder="you@example.com"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Password</label>
+                <input
+                  type="password"
+                  value={authForm.password}
+                  onChange={(event) => setAuthForm((current) => ({ ...current, password: event.target.value }))}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-400"
+                  placeholder="••••••••"
+                />
+              </div>
+
+              {authError && <p className="text-sm font-medium text-red-600">{authError}</p>}
+
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                Demo account: user@rentadormiloilo.com / User123!
+              </div>
+
+              <button
+                type="submit"
+                className="w-full rounded-full bg-amber-500 px-5 py-3 text-sm font-black text-slate-900 shadow-lg shadow-amber-200 transition hover:bg-amber-400"
+              >
+                {authMode === "login" ? "Continue" : "Create account"}
+              </button>
+            </form>
+          )}
+        </div>
+
         {hasListings ? (
           <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_35px_70px_rgba(15,23,42,0.12)]">
-            <img src={selectedDorm.image} alt={selectedDorm.name} className="h-[420px] w-full object-cover" />
+            <Image src={selectedDorm.image} alt={selectedDorm.name} width={1200} height={420} className="h-[420px] w-full object-cover" />
             <div className="p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -1056,13 +1400,22 @@ export default function Home() {
             <h3 className="mt-2 text-3xl font-black text-slate-900">Featured dorms in Iloilo City</h3>
           </div>
 
-          <div className="flex w-full max-w-xl flex-col gap-3 sm:flex-row">
+          <div className="flex w-full max-w-xl flex-col gap-3 sm:flex-row sm:items-center">
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               className="w-full rounded-full border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
               placeholder="Search dorms or areas"
             />
+            {isLoggedIn && (
+              <button
+                type="button"
+                onClick={openCreateDorm}
+                className="rounded-full bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+              >
+                Add listing
+              </button>
+            )}
           </div>
         </div>
 
@@ -1116,7 +1469,7 @@ export default function Home() {
                     }`}
                   >
                     <div className="relative">
-                      <img src={dorm.image} alt={dorm.name} className="h-52 w-full object-cover" />
+                      <Image src={dorm.image} alt={dorm.name} width={800} height={208} className="h-52 w-full object-cover" />
                       {isLoggedIn && (
                         <div className="absolute right-3 top-3 flex gap-2">
                           <button
@@ -1183,7 +1536,7 @@ export default function Home() {
                 </button>
               </div>
 
-              <img src={selectedDorm.image} alt={selectedDorm.name} className="mt-4 h-56 w-full rounded-2xl object-cover" />
+              <Image src={selectedDorm.image} alt={selectedDorm.name} width={800} height={224} className="mt-4 h-56 w-full rounded-2xl object-cover" />
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-2xl bg-white p-3">
@@ -1309,10 +1662,12 @@ export default function Home() {
 
           <div className="grid gap-4 md:grid-cols-3">
             {selectedDorm.gallery.map((photo, index) => (
-              <img
+              <Image
                 key={`${selectedDorm.id}-${index}`}
                 src={photo}
                 alt={`${selectedDorm.name} room ${index + 1}`}
+                width={600}
+                height={256}
                 className="h-64 w-full rounded-[1.5rem] object-cover shadow-sm"
               />
             ))}
